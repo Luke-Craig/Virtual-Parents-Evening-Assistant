@@ -1,0 +1,147 @@
+
+var ss = SpreadsheetApp.getActive();
+var sheet = ss.getActiveSheet();
+var data = sheet.getRange(3, 1, sheet.getLastRow(), sheet.getLastColumn()+4).getValues();
+
+function onInstall(){
+ onOpen() ;
+}
+
+function onOpen(){
+  
+  var ui = SpreadsheetApp.getUi();
+  ui.createMenu('Virtual Parents\' Evening Assistant')
+  .addItem('Step 1: Format the Data', 'formatData')
+  .addItem('Step 2: Create Calendar Events', 'createCalendarEvents')
+  .addItem('Step 3: Create Draft Email Invites', 'sendEmail') 
+  .addToUi();  
+}
+
+function formatData() {
+  
+  var ss = SpreadsheetApp.getActive();
+  var sheet = ss.getActiveSheet();
+  var data = sheet.getRange(3, 1, sheet.getLastRow()-2, sheet.getLastColumn()+4).getValues();
+  
+  var dateBox = sheet.getRange(1, 6);
+  var endTimeBox = sheet.getRange(1,7);
+  var meetTitleBox = sheet.getRange(1,8);
+  var sendEmailBox = sheet.getRange(1,9);
+  
+  endTimeBox.setValue('End Time');
+  meetTitleBox.setValue('Google Meet Link');
+  sendEmailBox.setValue('Draft Email Created?');
+  
+  var rule = SpreadsheetApp.newDataValidation().requireDate().build();
+  
+  dateBox.setDataValidation(rule);
+  dateBox.setBackground('yellow')
+  
+  var startDateColumn = sheet.getRange(3, 6, sheet.getLastRow()-2);
+  
+  Logger.log(startDateColumn);
+  
+  startDateColumn.setValue('=LEFT(E3,5)+$F$1');
+  startDateColumn.setNumberFormat('yyyy-dd-mmTH:mm:ss');
+  
+  var endDateColumn = sheet.getRange(3, 7, sheet.getLastRow()-2);
+  
+  endDateColumn.setValue('=F3+TIME(0,10,0)');
+  endDateColumn.setNumberFormat('yyyy-dd-mmTH:mm:ss');
+  
+  Utilities.sleep(2000)
+  
+  SpreadsheetApp.getUi().alert('Please double click the yellow box to enter the date of your meetings.');
+  
+  
+}
+
+
+function createCalendarEvents() {
+  
+  var ss = SpreadsheetApp.getActive();
+  var sheet = ss.getActiveSheet();
+  var data = sheet.getRange(3, 1, sheet.getLastRow()-2, sheet.getLastColumn()+4).getValues();
+  
+  data.forEach(function(row, i){
+    
+    var formattedStartDate = Utilities.formatDate(row[5], CalendarApp.getDefaultCalendar().getTimeZone(), "yyyy-MM-dd'T'HH:mm:ss")
+    var formattedEndDate = Utilities.formatDate(row[6], CalendarApp.getDefaultCalendar().getTimeZone(), "yyyy-MM-dd'T'HH:mm:ss")
+    var parentAddress = row[3]  
+    
+    var obj = {
+      "eventId": "abc123",
+      "title": row[1] + " Parents\' Evening",
+      "description": "",
+      "start": formattedStartDate,
+      "end": formattedEndDate
+    }
+    
+    var payload = {
+      "start": {
+        "dateTime": obj.start,
+        "timeZone": CalendarApp.getDefaultCalendar().getTimeZone()
+      },
+      "end": {
+        "dateTime": obj.end,
+        "timeZone": CalendarApp.getDefaultCalendar().getTimeZone()   
+      },
+      attendees: [
+        {email: parentAddress},  
+      ],
+        // Red background. Use Calendar.Colors.get() for the full list.
+        colorId: 11, 
+        "conferenceData": {
+        "createRequest": {
+        "conferenceSolutionKey": {
+        "type": "hangoutsMeet"
+        },
+        "requestId": obj.eventId,
+        },
+        },
+        "summary": obj.title,
+        "description": obj.description
+        }
+        
+        const arg = { "conferenceDataVersion": 1 }
+        const yourCalendarID = CalendarApp.getDefaultCalendar().getId()
+        
+        if (row[7] === ''){
+      try {
+      const response = Calendar.Events.insert(payload, yourCalendarID, arg)
+      
+      sheet.getRange(i+3, 8).setValue(response.hangoutLink);
+      
+    } catch(e) {
+    }
+  }
+               
+               });
+  
+}
+
+function sendEmail() {
+  
+  var ss = SpreadsheetApp.getActive();
+  var sheet = ss.getActiveSheet();
+  var data = sheet.getRange(3, 1, sheet.getLastRow()-2, sheet.getLastColumn()+4).getValues();
+  
+  data.forEach(function(row, i){
+    
+    var meetLink = row[7];
+    var emailAddress = row[3];
+    var timeDate = Utilities.formatDate(row[5], CalendarApp.getDefaultCalendar().getTimeZone(), "EEE, d MMM yyyy HH:mm:ss");
+    var parentName = row[2];
+    var childName = row[1];
+    var teacherEmail = CalendarApp.getDefaultCalendar().getId();
+    var body = ("Dear " + parentName + ", \n\nThank you for booking a virtual parents' evening slot for " + childName + 
+                " on " + timeDate + ". \n\nPlease click on the following link a few minutes before the scheduled start of the meeting: \n\n" 
+                + meetLink + "\n\nKind regards, \n\nYour child's teacher");
+    
+    if (row[8]===''){
+      GmailApp.createDraft(emailAddress +";"+ teacherEmail, "Virtual Parents' Evening details for " + childName + " on " + timeDate, body);
+      sheet.getRange(i+3, 9).setValue("Yes");
+    }
+  });
+}
+
